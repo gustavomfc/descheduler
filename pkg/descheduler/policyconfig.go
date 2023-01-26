@@ -110,6 +110,7 @@ func setDefaultEvictor(profile api.Profile, client clientset.Interface) api.Prof
 	if err != nil {
 		klog.Error(err, "Failed to get threshold priority from args")
 	}
+	profile.PluginConfigs[idx].Args.(*defaultevictor.DefaultEvictorArgs).PriorityThreshold = &api.PriorityThreshold{}
 	profile.PluginConfigs[idx].Args.(*defaultevictor.DefaultEvictorArgs).PriorityThreshold.Value = &thresholdPriority
 	return profile
 }
