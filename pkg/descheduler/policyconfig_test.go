@@ -45,7 +45,7 @@ func TestV1alpha1ToV1alpha2(t *testing.T) {
 		Name: defaultevictor.PluginName,
 		Args: &defaultevictor.DefaultEvictorArgs{
 			PriorityThreshold: &api.PriorityThreshold{
-				Value: utilpointer.Int32(utils.SystemCriticalPriority),
+				Value: nil,
 			},
 		},
 	}
