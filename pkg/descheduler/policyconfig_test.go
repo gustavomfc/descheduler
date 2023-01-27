@@ -682,9 +682,9 @@ func TestV1alpha1ToV1alpha2(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			internalDeschedulerPolicy := &api.DeschedulerPolicy{}
+			result := &api.DeschedulerPolicy{}
 			scope := scope{}
-			err := v1alpha1.V1alpha1ToInternal(tc.policy, pluginregistry.PluginRegistry, internalDeschedulerPolicy, scope)
+			err := v1alpha1.V1alpha1ToInternal(tc.policy, pluginregistry.PluginRegistry, result, scope)
 			if err != nil {
 				if err.Error() != tc.err.Error() {
 					t.Errorf("unexpected error: %s", err.Error())
@@ -692,8 +692,8 @@ func TestV1alpha1ToV1alpha2(t *testing.T) {
 			}
 			if err == nil {
 				// sort to easily compare deepequality
-				internalDeschedulerPolicy.Profiles = api.SortProfilesByName(internalDeschedulerPolicy.Profiles)
-				diff := cmp.Diff(tc.result, internalDeschedulerPolicy)
+				result.Profiles = api.SortProfilesByName(result.Profiles)
+				diff := cmp.Diff(tc.result, result)
 				if diff != "" {
 					t.Errorf("test '%s' failed. Results are not deep equal. mismatch (-want +got):\n%s", tc.description, diff)
 				}
