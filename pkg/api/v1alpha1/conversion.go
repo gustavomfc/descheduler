@@ -35,10 +35,6 @@ import (
 	"sigs.k8s.io/descheduler/pkg/framework/plugins/defaultevictor"
 )
 
-func init() {
-	localSchemeBuilder.Register(RegisterConversions)
-}
-
 var (
 	// pluginArgConversionScheme is a scheme with internal and v1alpha2 registered,
 	// used for defaulting/converting typed PluginConfig Args.
