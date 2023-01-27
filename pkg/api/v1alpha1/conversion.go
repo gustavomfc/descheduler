@@ -19,7 +19,6 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/conversion"
@@ -36,12 +35,14 @@ import (
 	"sigs.k8s.io/descheduler/pkg/framework/plugins/defaultevictor"
 )
 
+func init() {
+	localSchemeBuilder.Register(RegisterConversions)
+}
+
 var (
 	// pluginArgConversionScheme is a scheme with internal and v1alpha2 registered,
 	// used for defaulting/converting typed PluginConfig Args.
 	// Access via getPluginArgConversionScheme()
-	pluginArgConversionScheme     *runtime.Scheme
-	initPluginArgConversionScheme sync.Once
 
 	Scheme = runtime.NewScheme()
 	Codecs = serializer.NewCodecFactory(Scheme, serializer.EnableStrict)
@@ -106,7 +107,7 @@ func (hi *handleImpl) Evictor() framework.Evictor {
 }
 
 func Convert_v1alpha1_DeschedulerPolicy_To_api_DeschedulerPolicy(in *DeschedulerPolicy, out *api.DeschedulerPolicy, s conversion.Scope) error {
-	out, err := V1alpha1ToInternal(in, pluginregistry.PluginRegistry)
+	err := V1alpha1ToInternal(in, pluginregistry.PluginRegistry, out, s)
 	if err != nil {
 		return err
 	}
@@ -116,7 +117,9 @@ func Convert_v1alpha1_DeschedulerPolicy_To_api_DeschedulerPolicy(in *Descheduler
 func V1alpha1ToInternal(
 	deschedulerPolicy *DeschedulerPolicy,
 	registry pluginregistry.Registry,
-) (*api.DeschedulerPolicy, error) {
+	out *api.DeschedulerPolicy,
+	s conversion.Scope,
+) error {
 	var evictLocalStoragePods bool
 	if deschedulerPolicy.EvictLocalStoragePods != nil {
 		evictLocalStoragePods = *deschedulerPolicy.EvictLocalStoragePods
@@ -161,7 +164,7 @@ func V1alpha1ToInternal(
 
 				if params.ThresholdPriority != nil && params.ThresholdPriorityClassName != "" {
 					klog.ErrorS(fmt.Errorf("priority threshold misconfigured"), "only one of priorityThreshold fields can be set", "pluginName", name)
-					return nil, fmt.Errorf("priority threshold misconfigured for plugin %v", name)
+					return fmt.Errorf("priority threshold misconfigured for plugin %v", name)
 				}
 
 				var priorityThreshold *api.PriorityThreshold
@@ -178,11 +181,11 @@ func V1alpha1ToInternal(
 					pluginConfig, err = pcFnc(params)
 					if err != nil {
 						klog.ErrorS(err, "skipping strategy", "strategy", name)
-						return nil, fmt.Errorf("failed to get plugin config for strategy %v: %v", name, err)
+						return fmt.Errorf("failed to get plugin config for strategy %v: %v", name, err)
 					}
 				} else {
 					klog.ErrorS(fmt.Errorf("unknown strategy name"), "skipping strategy", "strategy", name)
-					return nil, fmt.Errorf("unknown strategy name: %v", name)
+					return fmt.Errorf("unknown strategy name: %v", name)
 				}
 
 				profile := api.Profile{
@@ -212,7 +215,7 @@ func V1alpha1ToInternal(
 				pluginInstance, err := registry[string(name)].PluginBuilder(pluginArgs, &handleImpl{})
 				if err != nil {
 					klog.ErrorS(fmt.Errorf("could not build plugin"), "plugin build error", "plugin", name)
-					return nil, fmt.Errorf("could not build plugin: %v", name)
+					return fmt.Errorf("could not build plugin: %v", name)
 				}
 
 				// pluginInstance can be of any of each type, or both
@@ -222,16 +225,16 @@ func V1alpha1ToInternal(
 			}
 		} else {
 			klog.ErrorS(fmt.Errorf("unknown strategy name"), "skipping strategy", "strategy", name)
-			return nil, fmt.Errorf("unknown strategy name: %v", name)
+			return fmt.Errorf("unknown strategy name: %v", name)
 		}
 	}
 
-	return &api.DeschedulerPolicy{
-		Profiles:                       profiles,
-		NodeSelector:                   deschedulerPolicy.NodeSelector,
-		MaxNoOfPodsToEvictPerNode:      deschedulerPolicy.MaxNoOfPodsToEvictPerNode,
-		MaxNoOfPodsToEvictPerNamespace: deschedulerPolicy.MaxNoOfPodsToEvictPerNamespace,
-	}, nil
+	out.Profiles = profiles
+	out.NodeSelector = deschedulerPolicy.NodeSelector
+	out.MaxNoOfPodsToEvictPerNamespace = deschedulerPolicy.MaxNoOfPodsToEvictPerNamespace
+	out.MaxNoOfPodsToEvictPerNode = deschedulerPolicy.MaxNoOfPodsToEvictPerNode
+
+	return nil
 }
 
 func enableProfilePluginsByType(profilePlugins api.Plugins, pluginInstance framework.Plugin, pluginConfig *api.PluginConfig) api.Plugins {
@@ -256,4 +259,14 @@ func checkDeschedule(profilePlugins api.Plugins, pluginInstance framework.Plugin
 		profilePlugins.Deschedule.Enabled = []string{pluginConfig.Name}
 	}
 	return profilePlugins
+}
+
+// Register Conversions
+func RegisterConversions(s *runtime.Scheme) error {
+	if err := s.AddGeneratedConversionFunc((*DeschedulerPolicy)(nil), (*api.DeschedulerPolicy)(nil), func(a, b interface{}, scope conversion.Scope) error {
+		return Convert_v1alpha1_DeschedulerPolicy_To_api_DeschedulerPolicy(a.(*DeschedulerPolicy), b.(*api.DeschedulerPolicy), scope)
+	}); err != nil {
+		return err
+	}
+	return nil
 }
